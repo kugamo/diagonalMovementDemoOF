@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Arrow Line Drawing Demo with Tallies</title>
+    <style>
+        body { background-color: rgb(96, 158, 96);}
+        canvas { border: 1px solid black; 
+                 background: #589df5;}
+        #controls { margin: 10px 0; }
+        #tallies { margin-top: 10px; font-family: Arial, sans-serif; }
+        #tallies p { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <p>Left-click: Set Point 1 | Right-click: Set Point 2</p>
+        <button onclick="clearCanvas()">Clear Canvas</button>
+    </div>
+    <canvas id="canvas" width="1200" height="800"></canvas>
+    <div id="tallies">
+        <p><span style="color: red;">Cardinal Moves:</span> <span id="cardinalCount">0</span></p>
+        <p><span style="color: blue;">Diagonal Moves:</span> <span id="diagonalCount">0</span></p>
+        <p><span style="color: yellow;">Adjusted Diagonal Moves:</span> <span id="adjustedDiagonalCount">0</span></p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let point1 = null, point2 = null;
+        const scale = 20; // Grid cell size (20x20 pixels per cell)
+        const sqrt2 = 1.414; // Approx 1.414 for diagonal move distance
+        let cardinalCount = 0, diagonalCount = 0, adjustedDiagonalCount = 0;
+
+        // Event listeners for mouse clicks
+        canvas.addEventListener('click', (e) => setPoint(e, true)); // Left click
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            setPoint(e, false); // Right click
+        });
+
+        function setPoint(event, isLeftClick) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((event.clientX - rect.left) / scale);
+            const y = Math.floor((event.clientY - rect.top) / scale);
+            const point = { x, y };
+
+            if (isLeftClick) {
+                point1 = point;
+            } else {
+                point2 = point;
+            }
+
+            draw();
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Reset move counts
+            cardinalCount = 0;
+            diagonalCount = 0;
+            adjustedDiagonalCount = 0;
+
+            // Draw grid
+            drawGrid();
+
+            // Draw points if they exist
+            if (point1) drawPoint(point1, 'white');
+            if (point2) drawPoint(point2, 'lightgrey');
+
+            // Draw lines if both points exist
+            if (point1 && point2) {
+                // Cardinal movement (Method 1)
+                drawCardinalLine(point1, point2, 'red');
+
+                // Diagonal movement (Method 2)
+                drawDiagonalLine(point1, point2, 'blue');
+
+                // Adjusted diagonal with cardinal moves (Method 3)
+                drawAdjustedDiagonalLine(point1, point2, 'yellow');
+            }
+
+            // Update tally display
+            updateTallies();
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 0.5;
+            for (let x = 0; x <= canvas.width; x += scale) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += scale) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function drawPoint(point, color) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(point.x * scale + scale / 2, point.y * scale + scale / 2, scale / 4, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        function drawArrow(fromX, fromY, toX, toY, color) {
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = 2;
+
+            // Calculate center of cells
+            const startX = fromX * scale + scale / 2;
+            const startY = fromY * scale + scale / 2;
+            const endX = toX * scale + scale / 2;
+            const endY = toY * scale + scale / 2;
+
+            // Draw line
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            // Draw arrowhead
+            const angle = Math.atan2(endY - startY, endX - startX);
+            const arrowSize = scale / 4;
+            ctx.beginPath();
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(
+                endX - arrowSize * Math.cos(angle - Math.PI / 6),
+                endY - arrowSize * Math.sin(angle - Math.PI / 6)
+            );
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(
+                endX - arrowSize * Math.cos(angle + Math.PI / 6),
+                endY - arrowSize * Math.sin(angle + Math.PI / 6)
+            );
+            ctx.stroke();
+        }
+
+        // Method 1: Cardinal movement (horizontal then vertical)
+        function drawCardinalLine(p1, p2, color) {
+            let x = p1.x, y = p1.y; // Initialize y with p1.y
+            const x1 = p2.x, y1 = p2.y;
+
+            // Horizontal movement
+            while (x !== x1) {
+                const nextX = x + (x < x1 ? 1 : -1);
+                drawArrow(x, y, nextX, y, color);
+                cardinalCount++;
+                x = nextX;
+            }
+
+            // Vertical movement
+            while (y !== y1) {
+                const nextY = y + (y < y1 ? 1 : -1);
+                drawArrow(x, y, x, nextY, color);
+                cardinalCount++;
+                y = nextY;
+            }
+        }
+
+        // Method 2: Diagonal movement (Bresenham's line algorithm)
+        function drawDiagonalLine(p1, p2, color) {
+            let x0 = p1.x, y0 = p1.y;
+            let x1 = p2.x, y1 = p2.y;
+            let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+            let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+            let err = dx + dy;
+
+            while (true) {
+                if (x0 === x1 && y0 === y1) break;
+                let e2 = 2 * err;
+                let nextX = x0, nextY = y0;
+                if (e2 >= dy) { err += dy; nextX += sx; }
+                if (e2 <= dx) { err += dx; nextY += sy; }
+                drawArrow(x0, y0, nextX, nextY, color);
+                diagonalCount++;
+                x0 = nextX;
+                y0 = nextY;
+            }
+        }
+
+        // Method 3: Adjusted diagonal with cardinal moves after accumulated distance
+        function drawAdjustedDiagonalLine(p1, p2, color) {
+    let x0 = p1.x, y0 = p1.y;
+    let x1 = p2.x, y1 = p2.y;
+    let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    let accumulatedDistance = 0.0;
+
+    while (true) {
+        if (x0 === x1 && y0 === y1) break;
+
+        let e2 = 2 * err;
+        let nextX = x0, nextY = y0;
+        let moveColor = color; // Default color (yellow) for regular moves
+
+        // Check if we should make a diagonal move
+        if (e2 >= dy && e2 <= dx && accumulatedDistance < 1) {
+            // Diagonal move
+            accumulatedDistance += sqrt2;
+            nextX += sx;
+            nextY += sy;
+            err += dy + dx;
+        } else if (e2 >= dy) {
+            if (accumulatedDistance > 1) {
+                moveColor = 'white'; // Color for forced cardinal moves
+                accumulatedDistance -= 1.0;
+            }
+            // Horizontal move
+            nextX += sx;
+            err += dy;
+            accumulatedDistance += 1.0;
+        } else if (e2 <= dx) {
+            if (accumulatedDistance > 1) {
+                moveColor = 'white'; // Color for forced cardinal moves
+                accumulatedDistance -= 1.0;
+            }
+            // Vertical move
+            nextY += sy;
+            err += dx;
+            accumulatedDistance += 1.0;
+        }
+        accumulatedDistance -= 1.0;
+
+        drawArrow(x0, y0, nextX, nextY, moveColor);
+        adjustedDiagonalCount++;
+        x0 = nextX;
+        y0 = nextY;
+    }
+}
+
+        function updateTallies() {
+            document.getElementById('cardinalCount').textContent = cardinalCount;
+            document.getElementById('diagonalCount').textContent = diagonalCount;
+            document.getElementById('adjustedDiagonalCount').textContent = adjustedDiagonalCount;
+        }
+
+        function clearCanvas() {
+            point1 = null;
+            point2 = null;
+            draw();
+        }
+    </script>
+</body>
+</html>
